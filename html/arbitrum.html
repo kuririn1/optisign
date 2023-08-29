@@ -1,0 +1,400 @@
+<head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.1/ethers.umd.min.js" integrity="sha512-i/G7kLmYAnT7Q0oBL5EryMwK+9sGtncvmvXt/8Q7EUvgCU8pt3OJvHAu9It5lOvOCqDbgqS9Qikpwk6NTFVe1A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<style>
+body {
+    font-family: sans-serif;
+    font-size: 15px;
+}
+
+.highlight {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
+#optisign-count:hover {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    cursor: pointer;
+}
+
+#optisign-widget {
+    margin:15px 0;
+    padding:10px;
+    border-radius: 8px;
+    background: #D9D9D9;
+    display: flex;
+    justify-content: space-between;
+    width: fit-content; /* Changed from 'auto' to 'fit-content' to make the widget fit its content */
+    font-size:14px;
+    font-family: sans-serif;
+}
+
+#left-column {
+    display: flex;
+    flex-direction: column;
+}
+
+#avatars {
+    display: flex;
+    margin-top:6px;
+}
+
+.avatar-widget {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: linear-gradient(to right, #0f0, #00f);
+    margin-right: -5px;
+}
+#right-column {
+    display: flex;
+    align-items: center;
+}
+
+#optisign-button {
+    margin: 0 10px;
+    padding: 10px 20px;
+    background-color: #3C4E5B;;
+    font-weight: bold;
+    color: white; 
+    border: none;
+    font-size: 15px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+#signers-list {
+    background-color: lightgrey; 
+    border-radius: 5px; 
+    padding: 18px; 
+    padding-top: 0px;
+    width: 300px;
+    font-family: sans-serif;
+    display: none;
+}
+.header {
+    display: flex; 
+    justify-content: space-between;
+}
+.item {
+    margin-bottom:4px;
+    display: flex; 
+    justify-content: space-between;
+    align-items: center; /* Added this line to align items vertically */
+}
+.avatar {
+    width: 19px;
+    height: 19px;
+    border-radius: 50%; 
+    background: linear-gradient(to right, #0f0, #00f);
+    display: inline-block;
+    margin-right: 5px;
+    vertical-align: middle; /* Added this line to center avatars */
+}
+.name {
+    align-self: center; /* Changed from flex-start to center */
+    vertical-align: middle;
+}
+.date {
+    align-self: center; /* Changed from flex-end to center */
+    color: red;
+    vertical-align: middle;
+}
+#you-avatar, #you {
+    display: none;
+    font-weight: bold;
+}
+
+#you-avatar img {
+    width: 18px;
+    height: 18px;
+    margin-top: -1px;
+}
+</style> 
+</head>
+
+<body>
+
+<div id="optisign">
+    I'm a "Future of Blockchain: University Hackathon" Hacker!
+</div>
+
+<div id="optisign-widget">
+    <div id="left-column">
+        <div>Signed by <span onclick="document.getElementById('signers-list').style.display='inline-block'" id="optisign-count"></span> <span id="you-avatar"></span><span id="you"></span></div>
+        <div id="avatars">
+        </div>
+    </div>
+    <div id="right-column">
+        <button id="optisign-button">Connect wallet</button>
+    </div>
+</div>
+
+<div id="signers-list">
+    <div class="header">
+        <h3>Signed by</h3>
+        <h5 style="cursor: pointer;" onclick="document.getElementById('signers-list').style.display='none'">X</h5>
+    </div>
+</div>
+
+</body>
+
+<script>
+  let provider = null;
+  let optisignButton = null;
+  let optisignCount = null;
+  let you = null;
+  let youAvatar = null;
+  let isWalletConnected = false;
+  let isSigned = false;
+
+  let rpcUrlArbitrum = "https://arbitrum-goerli.public.blastapi.io";
+  let rpcUrlEthereum = "https://eth-mainnet.public.blastapi.io";
+  const chainId = 421613n;
+  const chainIdHex = '0x66EED';
+
+  const contractAddress = '0x2373862F809e9d39C7587880fbA5894a2461C5C0';
+  
+  const abi = [
+      {"inputs":[{"internalType":"string","name":"_content","type":"string"},{"internalType":"address","name":"_signer","type":"address"}],"name":"verifySignature","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+      {"inputs":[{"internalType":"string","name":"_content","type":"string"}],"name":"signContent","outputs":[],"stateMutability":"nonpayable","type":"function"},
+      {"inputs":[{"internalType":"bytes32","name":"_contentHash","type":"bytes32"}],"name":"getTotalSignersByContentHash","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+      {"inputs":[{"internalType":"bytes32","name":"_contentHash","type":"bytes32"},{"internalType":"uint256","name":"startIndex","type":"uint256"},{"internalType":"uint256","name":"pageSize","type":"uint256"}],"name":"getSignaturesByContentHash","outputs":[{"internalType":"address[]","name":"","type":"address[]"},{"internalType":"uint256[]","name":"","type":"uint256[]"},{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
+  ];
+
+  const providerOptimism = new ethers.JsonRpcProvider(rpcUrlArbitrum); // these could change based on conifg
+  const providerEthereum = new ethers.JsonRpcProvider(rpcUrlEthereum);
+
+  const contract = new ethers.Contract(contractAddress, abi, providerOptimism);
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const optisign = document.getElementById('optisign');
+
+    const optisignWidget = document.getElementById('optisign-widget');
+    optisignButton = document.getElementById('optisign-button');
+    optisignCount = document.getElementById('optisign-count');
+    you = document.getElementById('you');
+    youAvatar = document.getElementById('you-avatar');
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const content = urlParams.get('content');
+
+    if (content) {
+        optisign.innerText = content;
+    }
+
+
+    optisignWidget.addEventListener('mouseover', function() {
+        optisign.classList.add('highlight');
+    });
+
+    optisignWidget.addEventListener('mouseout', function() {
+        optisign.classList.remove('highlight');
+    });
+    
+    optisignButton.addEventListener('click', async function() {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        
+        if (accounts.length > 0) {
+
+            try {
+                const network = await provider.getNetwork();
+
+                if(network.chainId !== chainId) {
+                    await switchToArbitrum();
+                }
+                
+                if(network.chainId === chainId) {
+                    
+                    isSigned = await verifySignature(accounts[0], optisign.innerText);
+                    if(!isSigned) {
+                        signContent(optisign.innerText);
+                    } else {
+                        optisignButton.style.display = 'none';
+                    }
+
+                }
+
+            } catch(err) {
+                console.log(err);
+                await switchToArbitrum();
+            }
+        }
+    });
+
+    loadProvider();
+    setNumberOfSigners();
+    loadSignedListWithAvatars();
+  
+});
+
+async function signContent(content) {
+    const signer = await provider.getSigner();
+    const contract = new ethers.Contract(contractAddress, abi, signer);
+
+    try {
+        const tx = await contract.signContent(content);
+        console.log('Transaction sent:', tx.hash);
+
+        optisignButton.innerText = "Signing...";     
+        await tx.wait();
+        window.location.reload();
+    } catch (error) {
+        optisignButton.innerText = "Error: try again"; 
+        console.log('An error occurred:', error);
+    }
+
+}    
+
+async function loadProvider() {
+    if (!window.ethereum) {
+        noWallet();
+    }
+    
+    provider = new ethers.BrowserProvider(window.ethereum);
+    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+    
+    if (accounts.length === 0) {
+        return walletNotConnected();
+    }
+    
+    isSigned = await verifySignature(accounts[0], optisign.innerText);
+    if(isSigned) {
+        optisignButton.style.display = 'none';
+    }
+    walletConnected(accounts);
+}
+
+async function getNumberOfContentSigners(content) {
+    const hash = ethers.id(content);
+    try {
+        return await contract.getTotalSignersByContentHash(hash);
+    } catch (error) {
+        console.error('An error occurred:', error);
+        return 0;
+    }
+} 
+
+function verifySignature(address, content) {
+    return contract.verifySignature(content, address);
+}
+
+async function getSignersByConentHashPaginated(hash, page) {
+    const perPage = 10;
+    return contract.getSignaturesByContentHash(hash, 10*page-10, perPage);
+}
+
+async function setNumberOfSigners() {
+    let signersNum = await getNumberOfContentSigners(optisign.innerText);
+    if(isSigned) signersNum -= 1n;
+    optisignCount.innerText = signersNum === 1n ? '' : signersNum + ' wallets';
+    if(signersNum === 1n) {
+        you.style.display='inline-block';
+        youAvatar.style.display='inline-block';
+        document.getElementById('avatars').style.display = 'none';
+    }
+    if(isSigned && signersNum > 1n) optisignCount.innerText += ' and you';
+}
+
+async function loadSignedListWithAvatars() {
+    const hash = ethers.id(optisign.innerText);
+    const signersList = await getSignersByConentHashPaginated(hash, 1);
+    const signersListContainer = document.getElementById('signers-list');
+
+    let signers = signersList[0];
+    const names = await Promise.all(signers.map(address => providerEthereum.lookupAddress(address)));
+    const avatars = await Promise.all(names.map(ens => ens ? providerEthereum.getAvatar(ens) : null));
+
+    avatars.forEach((avatar, i) => {
+        const avatarWidget = avatar ? createAvatarWidgetImg(avatar) : createAvatarWidgetDiv();
+        document.getElementById('avatars').appendChild(avatarWidget);
+        createSignerItem(signers[i], names[i], avatars[i], signersListContainer, i);
+    });
+}
+    
+function createAvatarWidgetImg(avatar) {
+    const avatarWidgetImg = document.createElement('img');
+    avatarWidgetImg.className = 'avatar-widget';
+    avatarWidgetImg.setAttribute('src', avatar);
+    return avatarWidgetImg;
+}
+
+function createAvatarWidgetDiv() {
+    const avatarWidgetDiv = document.createElement('div');
+    avatarWidgetDiv.className = 'avatar-widget';
+    return avatarWidgetDiv;
+}
+
+function createSignerItem(signer, name, avatar, container, index) {
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'item';
+
+    const innerDiv = document.createElement('div');
+    const avatarElement = avatar ? createAvatarWidgetImg(avatar) : createAvatarWidgetDiv();
+    avatarElement.remove('avatar-widget');
+    avatarElement.classList.add('avatar');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'name';
+    nameSpan.textContent = name ? name : `${signer.substring(0, 6)}...`;
+
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'date';
+
+    innerDiv.appendChild(avatarElement);
+    innerDiv.appendChild(nameSpan);
+
+    itemDiv.appendChild(innerDiv);
+    itemDiv.appendChild(dateSpan);
+
+    container.appendChild(itemDiv);
+
+    if(index === 0) {
+        you.innerText = nameSpan.textContent;
+        if(avatar) {
+            let cloned = avatarElement.cloneNode(true);
+            cloned.classList.remove('avatar-widget');
+            cloned.classList.add('avatar');
+            youAvatar.appendChild(cloned); 
+        }    
+    }
+}
+
+async function walletConnected(accounts) {
+    isWalletConnected = true;
+    optisignButton.innerText = "Sign content";
+}
+
+function walletNotConnected() {
+    optisignButton.innerText = "Connect wallet";
+}
+
+function noWallet() {
+    console.log('install metamask or other wallet');
+}
+
+const switchToArbitrum = async () => {
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: chainIdHex }],
+    });
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+window.ethereum.on('accountsChanged', (accounts) => {
+    window.location.reload();
+});
+
+window.ethereum.on('chainChanged', (chainId) => {
+  window.location.reload();
+});
+
+window.ethereum.on('disconnect', (error) => {
+  window.location.reload();
+});
+
+
+</script>    
